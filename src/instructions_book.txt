@@ -1,0 +1,1937 @@
+1) Création du projet
+
+> mkdir BookInventory && BookInventory
+> python3.9 -m venv .env
+> ls -la
+> source .env/bin/activate 
+
+> pip install Django==3.1.7
+> pip list 
+> pip install psycopg2==2.9.1 #installation de la BDD 
+> pip list
+
+> django-admin startproject book
+
+2) Création de la base de données PostgreSQL
+> psql # dans le terminal, au niveau de "django - book_inventory"
+> CREATE DATABASE book;
+> CREATE USER bookadmin WITH ENCRYPTED PASSWORD 'Fuck!'';
+> ALTER ROLE bookadmin SET client_encoding TO 'utf8';
+> ALTER ROLE bookadmin SET default_transaction_isolation TO 'read committed';
+> GRANT ALL PRIVILEGES ON DATABASE book TO bookadmin;
+> \du  #pour voir l'utilisateur ajouté blogadmin
+> \l  #pour voir toutes les BDD sur notre serveur
+
+Retourner sur VScode, dans notre projet :
+Dans settings.py, indiquer notre BDD : 
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql', #changement de la BDD
+        'NAME': 'book', #modifier avec le nom de notre BDD
+        'USER': 'bookadmin', 
+        'PASSWORD': 'Fuck!',
+        'HOST': 'localhost', #addresse locale de notre ordi
+        'PORT': '5432', #port par défaut mais modifiable sur l'app postgresql
+    }
+}
+
+3) Création de l'application du blog/book
+Dans le terminal de VSCode, dans l'environnement virtuel : 
+> cd src
+> python manage.py startapp posts
+OU
+> django-admin startapp posts 
+
+Ensuite, dans settings.py, rajouter "posts" dans INSTALLED_APPS : 
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'posts',
+]
+
+4) Création du modèle pour les articles
+Dans posts/models.py : 
+
+
+from django.db import models
+from django.contrib.auth import get_user_model
+from django.template.defaultfilters import slufigy
+
+User = get_user_model() #liée à la ForeignKey du champs author
+
+class BookPost(models.Model):
+    title = models.CharField(max_length=255, unique=True, verbose_name="Titre du livre")
+    book_author = models.CharField(max_length=255, verbose_name="Nom de l'auteur")
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True) #pour ne pas supprimer l'article en plus de l'utilisation
+    last_updated = models.DateTimeField(auto_now=True)
+    created_on = models.DateField(blank=True, null=True)
+    published = models.BooleanField(default=False, verbose_name="Publié")
+    content = models.TextField(blank=True, verbose_name="Résumé")
+
+    class Meta:
+        ordering = ['-created_on'] #articles affichés du plus récents au plus anciens
+        verbose_name = "Livres" #le verbose_name de BookPost
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slufigy(self.title)
+        super().save(*args,**kwargs)
+
+
+5) Appliquer les migrations dans la BDD
+
+> python manage.py makemigrations posts
+> python manage.py migrate posts
+
+Ouvrir postgresql et double cliquer sur "book"
+> \dt  #permet de vérifier notre migration dans la table postgresql - book
+
+6) Ajouter le modèle des articles dans l'interface d'administration
+Ajouter d'abord un utilisateur admin :
+> python manage.py createsuperuser 
+lain
+lain@gmail.com 
+123456
+> python manage.py runserver
+
+Pour afficher les articles, aller dans posts/admin.py : 
+
+from django.contrib import admin
+from posts.models import BookPost
+
+class BookPostAdmin(admin.ModelAdmin):
+    list_display = ("title", "book_author", "published", "created_on", "last_updated")
+    list_editable = ("published",)
+
+admin.site.register(BookPost, BookPostAdmin)
+
+7) Créer un template de base (HTML)
+Dans src, créer un dossier "templates" + un fichier base.html
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title></title>
+</head>
+<body>
+</body>
+</html>
+
+
+Dans settings.py, indiquer le chemin des templates via la variable 'DIRS':
+
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [BASE_DIR / "templates"],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+
+Modification dans base.html : 
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    {% block title %}
+        <title>Accueil</title>
+    {% endblock title %}
+</head>
+
+<body>
+
+    <section id="book">
+        {% block content %}
+        {% endblock content %}
+    </section>
+
+</body>
+</html>
+
+
+8) Créer la page d'accueil 
+Dans posts/views.py : 
+
+from django.shortcuts import render
+from django.views.generic import ListView
+
+from posts.models import BookPost
+
+class BookHome(ListView):
+    model = BookPost
+    context_object_name = "posts"
+
+    
+
+Dans posts/urls.py :
+from django.urls import path
+from posts.views import BookHome
+
+app_name = "posts"
+
+urlpatterns = [
+    path('', BookHome.as_view(), name="home"),
+
+]
+
+
+Dans book/urls.py, on va inclure notre urls posts : 
+
+
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('book/', include('posts.urls')),
+]
+
+Si on tente d'accéder à l'url "book/", on va tomber sur une page d'erreur "TemplateDoesNotExist"
+Pour ça, il faut le créer.
+Dans posts, on crée le dossier 'templates' + 'posts' + un fichier "bookpost_list.html"
+(on conserve le nom "bookpost_list" qui revient sur la page d'erruer. Si on souhaite changer le nom du fichier html, il faut créer la variable "template_name" dans notre vue)
+
+Dans bookpost_list.html : 
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Accueil</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Les livres de Lain </h1>
+    {% for post in posts %}
+        <article>
+            <h2>{{ post.title }}</h2>
+            <h3>{{ post.book_author }}</h3>
+            <h5>Publié par <i>{{ post.author_or_default }}</i> le {{ post.created_on|date:'j F Y' }}</h5>
+            <p>{{ post.content|safe|truncatewords:50 }}</p>
+        </article>
+    {% endfor %}
+{% endblock content %}
+
+
+Dans le h5, on fait appel au nom de l'utilisateur qui a créée l'article.
+Si un article n'a pas de nom d'utilisateur (publié par on ne sait qui), on va rajouter dans posts/models.py, la fonction author_or_default :
+
+from re import M
+from django.db import models
+from django.contrib.auth import get_user_model
+from django.template.defaultfilters import slugify
+
+User = get_user_model() #liée au champ author
+
+class BookPost(models.Model):
+    title = models.CharField(max_length=255, unique=True, verbose_name="Titre du livre")
+    book_author = models.CharField(max_length=255, verbose_name="Nom de l'auteur")
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    last_updated = models.DateTimeField(auto_now=True)
+    created_on = models.DateField(blank=True, null=True)
+    published = models.BooleanField(default=False, verbose_name="Publié")
+    content = models.TextField(blank=True, verbose_name="Résumé")
+
+    class Meta :
+        ordering = ['-created_on']
+        verbose_name = "Livre"
+
+    def __str__(self):
+        return self.title
+
+    def save(self,*args,**kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)
+        super().save(*args,**kwargs)
+
+    @property
+    def author_or_default(self):
+        if self.author:
+            return self.author.username
+        return ("Auteur inconnu")
+
+
+
+
+9) Masquer les articles non publiés: 
+On souhaite deux cas de figures : 1 où le superuser est connecté et 1 cas où un visiteur est sur notre site avec juste les articles publiés. On va donc modifier le queryset
+
+Dans posts/views.py : 
+
+from django.shortcuts import render
+from django.views.generic import ListView
+
+from posts.models import BookPost
+
+class BookHome(ListView):
+    model = BookPost
+    context_object_name = "posts"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.is_authenticated: #si connecté, on retourne le queryset de tous les articles, même les non publiés
+            return queryset
+
+        return queryset.filter(published=True) #sinon, on retourne que les articles publiés
+
+
+10) Créer la vue pour ajouter un article 
+
+Créer notre vue dans posts/views.py, en important Createview :
+
+from django.shortcuts import render
+from django.views.generic import ListView, CreateView
+
+from posts.models import BookPost
+
+class BookHome(ListView):
+    model = BookPost
+    context_object_name = "posts"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.is_authenticated: #si connecté, on retourne le queryset de tous les articles, même les non publiés
+            return queryset
+
+        return queryset.filter(published=True) #sinon, on retourne que les articles publiés
+class BookPostCreate(CreateView): #CreateView qui permet d'accéder à "form" dans html, via les fields renseignés
+    model = BookPost
+    template_name = "posts/bookpost_create.html"
+    fields = ['title', 'content',]
+
+
+Dans posts/templates, on créer le bookpost_create.html : 
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Ajouter un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Ajouter un livre</h1>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form }}
+        <input type="submit" value="Créer">
+    </form>
+{% endblock content %}
+
+
+Dans posts/urls.py : 
+from django.urls import path
+from posts.views import BookHome, BookPostCreate
+
+app_name = "posts"
+
+urlpatterns = [
+    path('', BookHome.as_view(), name="home"),
+    path('create/', BookPostCreate.as_view(), name="create")
+
+]
+
+Ensuite, on va créer l'url à rediriger une fois l'article ajouté. 
+Dans posts/models.py, en ajoutant la méthode get_absolute_url : 
+
+from re import M
+from django.urls import reverse  
+from django.db import models
+from django.contrib.auth import get_user_model
+from django.template.defaultfilters import slugify
+
+User = get_user_model() #liée au champ author
+
+class BookPost(models.Model):
+    title = models.CharField(max_length=255, unique=True, verbose_name="Titre du livre")
+    book_author = models.CharField(max_length=255, verbose_name="Nom de l'auteur")
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    last_updated = models.DateTimeField(auto_now=True)
+    created_on = models.DateField(blank=True, null=True)
+# possible d'import datetime (import datetime) et d'ajouter : created_on = models.DateField(blank=True, null=True, default=datetime.date.today)
+
+    published = models.BooleanField(default=False, verbose_name="Publié")
+    content = models.TextField(blank=True, verbose_name="Résumé")
+
+    class Meta :
+        ordering = ['-created_on']
+        verbose_name = "Livre"
+
+    def __str__(self):
+        return self.title
+
+    def save(self,*args,**kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)
+        super().save(*args,**kwargs)
+
+    @property
+    def author_or_default(self):
+        if self.author:
+            return self.author.username
+        return ("Auteur inconnu")
+
+    def get_absolute_url(self):
+        return reverse("posts:home") #ici, "posts" a été nommé dans urls.py, dans l'app_name
+
+
+11) Créer la vue pour modifier un article
+Dans posts/views.py, on va créer la classe BookPostUpdate : 
+
+from django.shortcuts import render
+from django.views.generic import ListView, CreateView, UpdateView
+
+from posts.models import BookPost
+
+class BookHome(ListView):
+    model = BookPost
+    context_object_name = "posts"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.is_authenticated: #si connecté, on retourne le queryset de tous les articles, même les non publiés
+            return queryset
+
+        return queryset.filter(published=True) #sinon, on retourne que les articles publiés
+
+class BookPostCreate(CreateView): #CreateView qui permet d'accéder à "form" dans html, via les fields renseignés
+    model = BookPost
+    template_name = "posts/bookpost_create.html"
+    fields = ['title', 'content',]
+
+class BookPostUpdate(UpdateView):
+    model = BookPost
+    template_name = "posts/bookpost_edit.html"
+    fields = ['title', 'content', 'published']
+
+
+Ensuite, on crée notre html "bookpost_edit.html" :
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Editer un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Editer un livre</h1>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form }}
+        <input type="submit" value="Editer">
+    </form>
+{% endblock content %}
+
+
+Dans posts/urls.py : 
+from django.urls import path
+from posts.views import BookHome, BookPostCreate, BookPostUpdate
+
+app_name = "posts"
+
+urlpatterns = [
+    path('', BookHome.as_view(), name="home"),
+    path('create/', BookPostCreate.as_view(), name="create"),
+    path('edit/<str:slug>/', BookPostUpdate.as_view(), name="edit"),
+]
+
+12) Créer la vue pour afficher un article 
+Dans posts/views.py, on va créer la classe BookPostDetail : 
+
+from django.shortcuts import render
+from django.views.generic import ListView, CreateView, UpdateView, DetailView
+
+from posts.models import BookPost
+
+class BookHome(ListView):
+    model = BookPost
+    context_object_name = "posts"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.is_authenticated: #si connecté, on retourne le queryset de tous les articles, même les non publiés
+            return queryset
+
+        return queryset.filter(published=True) #sinon, on retourne que les articles publiés
+
+class BookPostCreate(CreateView): #CreateView qui permet d'accéder à "form" dans html, via les fields renseignés
+    model = BookPost
+    template_name = "posts/bookpost_create.html"
+    fields = ['title', 'content',]
+
+class BookPostUpdate(UpdateView):
+    model = BookPost
+    template_name = "posts/bookpost_edit.html"
+    fields = ['title', 'content', 'published']
+
+class BookPostDetail(DetailView):
+    model = BookPost
+    context_object_name = "post" #par défaut, ça retournerait "object.title" sur l'html bookpost_detail
+    
+
+    
+
+Dans bookpost_detail.html : 
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>{{ post.title }}</title>
+{% endblock title %}
+
+{% block content %}
+    <article>
+        <h1>{{ post.title }}</h1>
+        <div>{{ post.content|linebreaks|safe }}</div>
+    </article>
+{% endblock content %}
+
+
+Dans l'urls.py: 
+from django.urls import path
+from posts.views import BookHome, BookPostCreate, BookPostUpdate, BookPostDetail
+
+app_name = "posts"
+
+urlpatterns = [
+    path('', BookHome.as_view(), name="home"),
+    path('create/', BookPostCreate.as_view(), name="create"),
+    path('<str:slug>/', BookPostDetail.as_view(), name='detail'),
+    path('edit/<str:slug>/', BookPostUpdate.as_view(), name="edit"),
+]
+
+13) Créer la vue pour supprimer un article 
+Dans posts/views.py, on va créer la classe BookPostDelete : 
+from ast import Delete
+from django.shortcuts import render
+from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView
+
+from posts.models import BookPost
+
+class BookHome(ListView):
+    model = BookPost
+    context_object_name = "posts"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.is_authenticated: #si connecté, on retourne le queryset de tous les articles, même les non publiés
+            return queryset
+
+        return queryset.filter(published=True) #sinon, on retourne que les articles publiés
+
+class BookPostCreate(CreateView): #CreateView qui permet d'accéder à "form" dans html, via les fields renseignés
+    model = BookPost
+    template_name = "posts/bookpost_create.html"
+    fields = ['title', 'content',]
+
+class BookPostUpdate(UpdateView):
+    model = BookPost
+    template_name = "posts/bookpost_edit.html"
+    fields = ['title', 'content', 'published']
+
+class BookPostDetail(DetailView):
+    model = BookPost
+    context_object_name = "post" #par défaut, ça retournerait "object.title" sur l'html bookpost_detail
+    
+class BookPostDelete(DeleteView):
+    model = BookPost
+    context_object_name = "post" #d'ailleurs, post retourne forcément le titre du livre (dans models, le def__str__ retourne le titre)
+    success_url = reverse_lazy("posts:home") #l'url pour nous rediriger une fois l'article supprimé (en utilisant ce process dans une classe, on ne peut pas utiliser "reverse", on aura un message d'erreur - d'où l'utilisation de reverse_lazy)
+    
+
+On va ensuite créer l'html : bookpost_confirm_delete.html qui est le nom que django donne au départ 
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Supprimer un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <form method="POST">
+        {% csrf_token %}
+        <p>Êtes-vous sûr de vouloir supprimer le livre "{{ post }}" ?</p>
+        <input type="submit" value="Oui, supprimer">
+    </form>
+{% endblock content %}
+
+
+Dans urls.py : 
+
+from django.urls import path
+from posts.views import BookHome, BookPostCreate, BookPostUpdate, BookPostDetail, BookPostDelete
+
+app_name = "posts"
+
+urlpatterns = [
+    path('', BookHome.as_view(), name="home"),
+    path('create/', BookPostCreate.as_view(), name="create"),
+    path('<str:slug>/', BookPostDetail.as_view(), name='detail'),
+    path('edit/<str:slug>/', BookPostUpdate.as_view(), name="edit"),
+    path('delete/<str:slug>/', BookPostDelete.as_view(), name="delete"),
+
+]
+
+14) Ajouter des liens entre les vues 
+Dans src/templates/base.html, en ajoutant une barre de navigation (pour quand on est connecté) :
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    {% block title %}
+        <title>Accueil</title>
+    {% endblock title %}
+</head>
+
+<body>
+
+    <nav>
+        <a href="{% url 'posts:home' %}">Accueil</a>
+        {% if request.user.is_authenticated %}
+            <a href="{% url 'posts:create' %}">Ajouter un livre</a>
+        {% endif %}
+    </nav>
+
+    <section id="book">
+        {% block content %}
+        {% endblock content %}
+    </section>
+
+</body>
+</html>
+
+
+Dans posts/templates/bookpost_list.html : 
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Accueil</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Les livres de Lain </h1>
+
+    {% for post in posts %}
+        <article>
+
+            <h2>{{ post.title }}</h2>
+
+            {% if request.user.is_authenticated %}
+                <div>
+                    <a href="{% url 'posts:edit' slug=post.slug %}">Éditer</a>
+                    <a href="{% url 'posts:delete' slug=post.slug %}">Supprimer</a>
+                </div>
+            {% endif %}
+
+            <h3>{{ post.book_author }}</h3>
+            <h5>Publié par <i>{{ post.author_or_default|capfirst }}</i> le {{ post.created_on|date:'j F Y' }}</h5>
+            <p>{{ post.content|safe|truncatewords:50 }}</p>
+
+            <form action="{% url 'posts:detail' slug=post.slug %}">
+                <button>Lire la suite</button>
+            </form>            
+
+        </article>
+    {% endfor %}
+
+{% endblock content %}
+
+
+
+
+Dans posts/views.py, on va indique qu'on a accès à la vue Create que si on est connecté, même en tapant l'url manuellement, grâce à login_required :
+
+from ast import Delete
+from django.shortcuts import render
+from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+
+
+from posts.models import BookPost
+
+class BookHome(ListView):
+    model = BookPost
+    context_object_name = "posts"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.is_authenticated: #si connecté, on retourne le queryset de tous les articles, même les non publiés
+            return queryset
+
+        return queryset.filter(published=True) #sinon, on retourne que les articles publiés
+
+@method_decorator(login_required, name="dispatch") #dispatch étant une fonction django
+class BookPostCreate(CreateView): #CreateView qui permet d'accéder à "form" dans html, via les fields renseignés
+    model = BookPost
+    template_name = "posts/bookpost_create.html"
+    fields = ['title', 'content',]
+
+@method_decorator(login_required, name="dispatch")
+class BookPostUpdate(UpdateView):
+    model = BookPost
+    template_name = "posts/bookpost_edit.html"
+    fields = ['title', 'content', 'published']
+
+class BookPostDetail(DetailView):
+    model = BookPost
+    context_object_name = "post" #par défaut, ça retournerait "object.title" sur l'html bookpost_detail
+
+@method_decorator(login_required, name="dispatch")  
+class BookPostDelete(DeleteView):
+    model = BookPost
+    context_object_name = "post" #d'ailleurs, post retourne forcément le titre du livre (dans models, le def__str__ retourne le titre)
+    success_url = reverse_lazy("posts:home") #l'url pour nous rediriger une fois l'article supprimé (en utilisant ce process dans une classe, on ne peut pas utiliser "reverse", on aura un message d'erreur - d'où l'utilisation de reverse_lazy)
+
+
+
+###################################
+MISE EN FORME DU SITE 
+
+1) Ajouter un fichier css static 
+Dans posts/static/css/reset.css : 
+
+html {
+    box-sizing: border-box;
+    font-size: 16px;
+}
+
+*, *:before, *:after {
+    box-sizing: inherit;
+}
+
+body, h1, h2, h3, h4, h5, h6, p, ol, ul {
+    margin: 0;
+    padding: 0;
+    font-weight: normal;
+}
+
+ol, ul {
+    list-style: none;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+
+
+
+Dans posts/static/css/style.css (on va importer reset dans ce css): 
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;1,100;1,200&family=Raleway:wght@200&display=swap');
+@import "reset.css ";
+
+
+body {
+    font-family: 'Raleway', sans-serif;
+    background-color: mintcream;
+}
+
+nav {
+    margin: 2rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+#book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 5rem;
+}
+
+#book article {
+    width: 50%;
+    margin-top: 2rem;
+}
+
+@media (max-width: 1024px){
+    #book article {
+        width: 85%;
+    }
+}
+
+
+
+Dans base.html, on va ajouter le lien css :
+
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    {% block title %}
+    {% endblock title %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+
+<body>
+
+    <nav>
+        <a href="{% url 'posts:home' %}">Accueil</a>
+        {% if request.user.is_authenticated %}
+            <a href="{% url 'posts:create' %}">Ajouter un livre</a>
+        {% endif %}
+    </nav>
+
+    <section id="book">
+        {% block content %}
+        {% endblock content %}
+    </section>
+
+</body>
+</html>
+
+
+2) Mise en forme des articles
+
+Dans posts/templates/bookpost_list.html : 
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Accueil</title>
+{% endblock title %}
+
+{% block content %}
+    <h1><u>Les livres de Lain </u></h1>
+
+    {% for post in posts %}
+        <article>
+            <div class="post-title">
+
+                <h2>{{ post.title }} de <b>{{ post.book_author }}</b></h2>
+
+                {% if request.user.is_authenticated %}
+                    <div>
+                        <a href="{% url 'posts:edit' slug=post.slug %}">Éditer</a>
+                        <a href="{% url 'posts:delete' slug=post.slug %}">Supprimer</a>
+                    </div>
+                {% endif %}
+
+            </div>
+
+            
+            <h5 class='post-author'>Publié par <i>{{ post.author_or_default|capfirst }}</i> le {{ post.created_on|date:'j F Y' }}</h5>
+            <p class='post-excerpt'>{{ post.content|safe|truncatewords:50 }}</p>
+
+            <form action="{% url 'posts:detail' slug=post.slug %}">
+                <button>Lire la suite</button>
+            </form>            
+
+        </article>
+    {% endfor %}
+
+{% endblock content %}
+
+
+Dans notre fichier style.css : 
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;1,100;1,200&family=Raleway:wght@200&display=swap');
+@import "reset.css ";
+
+
+body {
+    font-family: 'Raleway', sans-serif;
+    background-color: mintcream;
+}
+
+nav {
+    margin: 2rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+#book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 5rem;
+}
+
+#book article {
+    width: 50%;
+    margin-top: 2rem;
+}
+
+@media (max-width: 1024px){
+    #book article {
+        width: 85%;
+    }
+}
+
+
+.post-title{
+    display: flex;
+    align-items: center;
+}
+
+.post-title a{
+    color: steelblue;
+    text-decoration: none;
+    margin-left: .5rem;
+}
+
+.post-title a:last-child{
+    color: red;
+}
+
+.post-title > div{
+    margin-left: auto;
+}
+
+.post-author{
+    margin: .5rem 0;
+
+}
+
+.post-excerpt{
+    margin-bottom: 1rem;
+}
+
+
+Ensuite, dans bookpost_detail.html : 
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>{{ post.title }}</title>
+{% endblock title %}
+
+{% block content %}
+    <article class="post-detail">
+        <h1>{{ post.title }}</h1>
+        <div>{{ post.content|linebreaks|safe }}</div>
+    </article>
+{% endblock content %}
+
+Dans le style.css: 
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;1,100;1,200&family=Raleway:wght@200&display=swap');
+@import "reset.css ";
+
+
+body {
+    font-family: 'Raleway', sans-serif;
+    background-color: mintcream;
+}
+
+nav {
+    margin: 2rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+#book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 5rem;
+}
+
+#book article {
+    width: 50%;
+    margin-top: 2rem;
+}
+
+@media (max-width: 1024px){
+    #book article {
+        width: 85%;
+    }
+}
+
+
+.post-title{
+    display: flex;
+    align-items: center;
+}
+
+.post-title a{
+    color: steelblue;
+    text-decoration: none;
+    margin-left: .5rem;
+}
+
+.post-title a:last-child{
+    color: red;
+}
+
+.post-title > div{
+    margin-left: auto;
+}
+
+.post-author{
+    margin: .5rem 0;
+
+}
+
+.post-excerpt{
+    margin-bottom: 1rem;
+}
+
+.post-detail{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.post-detail h1{
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+
+
+3) Mise en forme des formulaires
+Dans style.css : 
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;1,100;1,200&family=Raleway:wght@200&display=swap');
+@import "reset.css ";
+
+
+body {
+    font-family: 'Raleway', sans-serif;
+    background-color:mintcream;
+}
+
+nav {
+    margin: 2rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+#book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 5rem;
+}
+
+#book article {
+    width: 50%;
+    margin-top: 2rem;
+}
+
+@media (max-width: 1024px){
+    #book article {
+        width: 85%;
+    }
+}
+
+
+.post-title{
+    display: flex;
+    align-items: center;
+}
+
+.post-title a{
+    color: steelblue;
+    text-decoration: none;
+    margin-left: .5rem;
+}
+
+.post-title a:last-child{
+    color: red;
+}
+
+.post-title > div{
+    margin-left: auto;
+}
+
+.post-author{
+    margin: .5rem 0;
+
+}
+
+.post-excerpt{
+    margin-bottom: 1rem;
+}
+
+.post-detail{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.post-detail h1{
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+input, textarea {
+    display: block;
+    padding: .75rem;
+    line-height: 1.5;
+    font-size: 1rem;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    min-width: 600px;
+}
+
+label {
+    display: inline-block;
+    box-sizing: border-box;
+    margin : 1rem 0
+}
+
+
+
+4) Mise en forme des boutons
+
+Dans bookpost_list.html, on va ajouter la classse btn btn-submit : 
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Accueil</title>
+{% endblock title %}
+
+{% block content %}
+    <h1><u>Les livres de Lain </u></h1>
+
+    {% for post in posts %}
+        <article>
+            <div class="post-title">
+
+                <h2>{{ post.title }} de <b>{{ post.book_author }}</b></h2>
+
+                {% if request.user.is_authenticated %}
+                    <div>
+                        <a href="{% url 'posts:edit' slug=post.slug %}">Éditer</a>
+                        <a href="{% url 'posts:delete' slug=post.slug %}">Supprimer</a>
+                    </div>
+                {% endif %}
+
+            </div>
+
+            
+            <h3 class='post-author'>Publié par <i>{{ post.author_or_default|capfirst }}</i> le {{ post.created_on|date:'j F Y' }}</h3>
+            <p class='post-excerpt'>{{ post.content|safe|truncatewords:50 }}</p>
+
+            <form action="{% url 'posts:detail' slug=post.slug %}">
+                <button class="btn btn-submit">Lire la suite</button>
+            </form>            
+
+        </article>
+    {% endfor %}
+
+{% endblock content %}
+
+Dans bookpost_create.html, on fait la même chose
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Ajouter un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Ajouter un livre</h1>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form }}
+        <input type="submit" value="Créer" {% extends 'base.html' %}
+
+{% block title %}
+    <title>Editer un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Editer un livre</h1>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form }}
+        <input type="submit" value="Editer" class="btn btn-submit">
+    </form>
+{% endblock content %}>
+    </form>
+{% endblock content %}
+
+
+Dans bookpost_edit.html, on fait la même chose : 
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Editer un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Editer un livre</h1>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form }}
+        <input type="submit" value="Editer" class="btn btn-submit">
+    </form>
+{% endblock content %}
+
+
+Dans bookpost_confirm_delete.html, on va ajouter la classe btn btn-delete
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Supprimer un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <form method="POST">
+        {% csrf_token %}
+        <p>Êtes-vous sûr de vouloir supprimer le livre "{{ post.title }}" de {{ post.book_author }} ?</p>
+        <input type="submit" value="Oui, supprimer" class="btn btn-delete">
+    </form>
+{% endblock content %}
+
+
+Dans style.css : 
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;1,100;1,200&family=Raleway:wght@200&display=swap');
+@import "reset.css ";
+
+
+body {
+    font-family: 'Raleway', sans-serif;
+    background-color:mintcream;
+}
+
+nav {
+    margin: 2rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+#book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 5rem;
+}
+
+#book article {
+    width: 50%;
+    margin-top: 2rem;
+}
+
+@media (max-width: 1024px){
+    #book article {
+        width: 85%;
+    }
+}
+
+
+.post-title{
+    display: flex;
+    align-items: center;
+}
+
+.post-title a{
+    color: steelblue;
+    text-decoration: none;
+    margin-left: .5rem;
+}
+
+.post-title a:last-child{
+    color: red;
+}
+
+.post-title > div{
+    margin-left: auto;
+}
+
+.post-author{
+    margin: .5rem 0;
+
+}
+
+.post-excerpt{
+    margin-bottom: 1rem;
+}
+
+.post-detail{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.post-detail > h1{
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+input:not([type="checkbox"], [type="number"], [type="radio"]),
+textarea {
+    display: block;
+    padding: .75rem;
+    line-height: 1.5;
+    font-size: 1rem;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    min-width: 600px;
+}
+
+
+label {
+    display: inline-block;
+    box-sizing: border-box;
+    margin : 1rem 0
+}
+
+
+
+.btn {
+    padding: 1rem;
+    border: none;
+    font-weight: 600;
+    font-size: 1.25rem;
+    border-radius: .3rem;
+    color: white;
+    width: 100%;
+    cursor: pointer;
+    margin-top: 1rem;
+
+}
+
+.btn-submit {
+    background-color: steelblue;
+}
+
+.btn-delete {
+    background-color: indianred;
+}
+
+
+.checked {
+    color: red;
+}
+
+
+
+Pour ajouter les étoiles dans la création de livre 
+
+Dans forms.py : 
+
+from django import forms
+from django.forms import ModelForm
+
+from posts.models import BookPost
+
+
+class DateInput(forms.DateInput):
+    input_type = 'date'
+
+class BookForm(ModelForm):    
+    class Meta:
+        model = BookPost
+        fields = ['title', 'book_author', 'content','created_on', 'thumbnail', 'score']
+        widgets = {
+            'created_on': DateInput(),
+            'score': forms.NumberInput(attrs={'class': 'hidden'})
+        }
+
+class BookFormEdit(ModelForm):
+    class Meta:
+        model = BookPost
+        fields = ['title', 'book_author', 'content','created_on', 'published', 'thumbnail', 'score']
+        widgets = {
+            'created_on': DateInput(),
+            'score': forms.NumberInput(attrs={'class': 'hidden'})
+        }
+
+
+D'ailleurs, on fait une boucle sur field pour cacher le field de score
+
+Dans bookpost_create : 
+
+
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Ajouter un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <form action="" method="post">
+        {% csrf_token %}
+        {% for field in form %}
+            <p>
+                {% if field.name != 'score' %} {{ field.label_tag}} {% endif %}
+                {{ field }}
+            </p>
+        {% endfor %}
+        <br>
+        <div class="stars">
+           <h3> Note : <i class="lar la-star" data-value="1"></i><i class="lar la-star" data-value="2"></i><i class="lar la-star" data-value="3"></i><i class="lar la-star" data-value="4"></i><i class="lar la-star" data-value="5"></i> </h3>
+        </div>
+        <input type="submit" value="Ajouter" class="btn btn-submit">
+    </form>  
+
+{% endblock content %}
+
+Dans base.html, on va rajouter nos link JS (et font-awesome qui servira sur bookpost_list)
+
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{% static 'css/base.css' %}">
+    <link rel="stylesheet" href="https://maxst.icons8.com/vue-static/landings/line-awesome/line-awesome/1.3.0/css/line-awesome.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet"/>
+    <script src="{% static 'css/main.js' %}" defer></script>
+    {% block title %}
+    {% endblock title %}
+</head>
+
+<body>
+
+    <nav>
+        <a href="{% url 'posts:home' %}">Accueil</a>
+        {% if request.user.is_authenticated %}
+            <a href="{% url 'posts:create' %}">Ajouter un livre</a>
+        {% endif %}
+        
+    </nav>
+
+    <section id="book">
+        {% block content %}
+        
+        {% endblock content %}
+    </section>
+</body>
+</html>
+
+Dans static/css/main.js : 
+
+window.onload = () => {
+    // On va chercher toutes les étoiles
+    const stars = document.querySelectorAll(".la-star");
+   
+    // On va chercher l'input
+    const score = document.querySelector("#id_score"); //mettre "score"
+ 
+    // On boucle sur les étoiles pour leur ajouter des écouteurs d'évènements
+    for(star of stars){
+        // On écoute le survol
+        star.addEventListener("mouseover", function(){
+            resetStars();
+            this.style.color = "red";
+            this.classList.add("las"); // pour remplir l'étoile de rouge repris dans le while
+            this.classList.remove("lar");// pour rendre l'étoile vide
+            // L'élément précédent dans le DOM (de même niveau, balise soeur)
+            let previousStar = this.previousElementSibling;
+ 
+            while(previousStar){
+                // On passe l'étoile qui précède en rouge
+                previousStar.style.color = "red";
+                previousStar.classList.add("las");
+                previousStar.classList.remove("lar");
+                // On récupère l'étoile qui la précède
+                previousStar = previousStar.previousElementSibling;
+            }
+        });
+ 
+        // On écoute le clic
+        star.addEventListener("click", function(){
+            score.value = this.dataset.value; // mettre score.value
+        });
+ 
+                // permet de conserver les étoiles où on a passé la souris
+        star.addEventListener("mouseout", function(){
+            resetStars(score.value); //  mettre score.value
+        });
+    }
+ 
+    /**
+     * Reset des étoiles en vérifiant la note dans l'input caché
+     * @param {number} score 
+     */
+    function resetStars(score = 0){  // mettre score
+        for(star of stars){
+            if(star.dataset.value > score){ // mettre score
+                star.style.color = "black";
+                star.classList.add("lar");
+                star.classList.remove("las");
+            }else{
+                star.style.color = "red";
+                star.classList.add("las");
+                star.classList.remove("lar");
+            }
+        }
+    }
+}
+
+Ensuite, dans bookpost_list, on va ajouter nos étoiles "pré-remplies" : 
+
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}
+    <title>Accueil</title>
+{% endblock title %}
+
+{% block content %}
+    <h1><u>MES LIVRES</u></h1>
+
+    {% for post in posts %}
+        <article>
+            <div class="post-title">
+
+                <h2>{{ post.title }} de <b>{{ post.book_author }}</b></h2>
+
+                {% if request.user.is_authenticated %}
+                    <div>
+                        <a href="{% url 'posts:edit' slug=post.slug %}">Éditer</a>
+                        <a href="{% url 'posts:delete' slug=post.slug %}">Supprimer</a>
+                    </div>
+                {% endif %}
+
+            </div>
+
+            <!-- Pour que la date soit reprise en fr, on ajoute le load i18n et le tag language -->
+            {% language 'fr' %}
+            <h3 class='post-author'>Publié par <i>{{ post.author_or_default|capfirst }}</i> le {{ post.created_on|date:'j F Y' }}</h3>
+            <p class='post-excerpt'>{{ post.content|safe|truncatewords:50 }}</p>
+            {% endlanguage %}
+            
+            <!-- Pour afficher le score en étoile -->
+            <div class="rating-box">
+                {% if post.score == 1 %}
+                    <div class="rating" style="width:20%;"></div>
+                {% elif post.score == 2 %}
+                    <div class="rating" style="width:40%;"></div>
+                {% elif post.score == 3 %}
+                    <div class="rating" style="width:60%;"></div>
+                {% elif post.score == 4 %}
+                    <div class="rating" style="width:80%;"></div>
+                {% elif post.score == 5 %}
+                    <div class="rating" style="width:100%;"></div>
+                {% endif %}
+            </div>            
+
+            <form action="{% url 'posts:detail' slug=post.slug %}">
+                <button class="btn btn-submit">Lire la suite</button>
+            </form>            
+
+        </article>
+    {% endfor %}
+
+{% endblock content %}
+
+
+Rajouter dans css les étoiles remplies : 
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;1,100;1,200&family=Raleway:wght@200&display=swap');
+@import "reset.css ";
+
+
+body {
+    font-family: 'Raleway', sans-serif;
+    background-color:mintcream;
+}
+
+nav {
+    margin: 2rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+#book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 5rem;
+}
+
+#book article {
+    width: 50%;
+    margin-top: 2rem;
+}
+
+@media (max-width: 1024px){
+    #book article {
+        width: 85%;
+    }
+}
+
+
+.post-title{
+    display: flex;
+    align-items: center;
+}
+
+.post-title a{
+    color: steelblue;
+    text-decoration: none;
+    margin-left: .5rem;
+}
+
+.post-title a:last-child{
+    color: red;
+}
+
+.post-title > div{
+    margin-left: auto;
+}
+
+.post-author{
+    margin: .5rem 0;
+
+}
+
+.post-excerpt{
+    margin-bottom: 1rem;
+}
+
+.post-detail{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.post-detail > h1{
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+input:not([type="checkbox"], [type="number"], [type="radio"]),
+textarea {
+    display: block;
+    padding: .75rem;
+    line-height: 1.5;
+    font-size: 1rem;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    min-width: 600px;
+}
+
+
+label {
+    display: inline-block;
+    box-sizing: border-box;
+    margin : 1rem 0
+}
+
+
+
+.btn {
+    padding: 1rem;
+    border: none;
+    font-weight: 600;
+    font-size: 1.25rem;
+    border-radius: .3rem;
+    color: white;
+    width: 100%;
+    cursor: pointer;
+    margin-top: 1rem;
+
+}
+
+.btn-submit {
+    background-color: steelblue;
+}
+
+.btn-delete {
+    background-color: indianred;
+}
+
+
+.checked {
+    color: red;
+}
+
+
+
+.rating-box {
+    position:relative;
+    vertical-align: middle;
+    font-size: 1.5em;
+    font-family: FontAwesome;
+    display:inline-block;
+    color: #F68127;
+  }
+.rating-box:before{
+    content: "\f006 \f006 \f006 \f006 \f006";
+}
+.rating-box .rating {
+    position: absolute;
+    left:0;
+    top:0;
+    white-space:nowrap;
+    overflow:hidden;
+    color: #F68127;
+}
+.rating-box .rating:before {
+    content: "\f005 \f005 \f005 \f005 \f005";
+    }
+
+
+.hidden{
+    display:none;
+}
+
+Ajouter la note dans "Lire la suite"
+Dans bookpost_detail : 
+
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}
+    <title>{{ post.title }}</title>
+{% endblock title %}
+
+{% block content %}
+    <article class="post-detail">
+        <div class="title">
+            <h1><b>{{ post.title }}</b></h1>
+        </div>
+        <div class="author">
+            <h4>de {{ post.book_author }}</h4>
+        </div>
+
+        <!-- date 
+        <div class="date">
+            {% language 'fr' %}
+                Terminé le {{ post.created_on|date:'j F Y' }}
+            {% endlanguage %}
+        </div>
+        -->
+
+        <div class="rating-box">
+            {% if post.score == 1 %}
+                <div class="rating" style="width:20%;"></div>
+            {% elif post.score == 2 %}
+                <div class="rating" style="width:40%;"></div>
+            {% elif post.score == 3 %}
+                <div class="rating" style="width:60%;"></div>
+            {% elif post.score == 4 %}
+                <div class="rating" style="width:80%;"></div>
+            {% elif post.score == 5 %}
+                <div class="rating" style="width:100%;"></div>
+            {% endif %}
+        </div> 
+
+        <div class="cat">
+        {% if post.thumbnail %}
+            <img src="{{ post.thumbnail.url }}" alt="L'image de l'article">
+        {% endif %}
+        </div>
+
+        <div class="content">
+            <h3>Résumé</h3>
+            {{ post.content|linebreaks|safe }}
+        </div>
+    </article>
+{% endblock content %}
+
+Ajout dans css : 
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;1,100;1,200&family=Raleway:wght@200&display=swap');
+@import "reset.css ";
+
+
+body {
+    font-family: 'Raleway', sans-serif;
+    background-color:mintcream;
+}
+
+nav {
+    margin: 2rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+#book {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 5rem;
+}
+
+#book article {
+    width: 50%;
+    margin-top: 2rem;
+}
+
+
+@media (max-width: 1024px){
+    #book article {
+        width: 85%;
+    }
+}
+
+
+.post-title{
+    display: flex;
+    align-items: center;
+}
+
+.post-title a{
+    color: steelblue;
+    text-decoration: none;
+    margin-left: .5rem;
+}
+
+.post-title a:last-child{
+    color: red;
+}
+
+.post-title > div{
+    margin-left: auto;
+}
+
+.post-author{
+    margin: .5rem 0;
+
+}
+
+.post-excerpt{
+    margin-bottom: 1rem;
+}
+
+.post-detail{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.post-detail > h1{
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+input:not([type="checkbox"], [type="number"], [type="radio"]),
+textarea {
+    display: block;
+    padding: .75rem;
+    line-height: 1.5;
+    font-size: 1rem;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    min-width: 600px;
+}
+
+
+label {
+    display: inline-block;
+    box-sizing: border-box;
+    margin : 1rem 0
+}
+
+
+
+.btn {
+    padding: 1rem;
+    border: none;
+    font-weight: 600;
+    font-size: 1.25rem;
+    border-radius: .3rem;
+    color: white;
+    width: 100%;
+    cursor: pointer;
+    margin-top: 1rem;
+
+}
+
+.btn-submit {
+    background-color: steelblue;
+}
+
+.btn-delete {
+    background-color: indianred;
+}
+
+
+.checked {
+    color: red;
+}
+
+
+
+
+
+.rating-box {
+    position:relative;
+    vertical-align: middle;
+    font-size: 1.5em;
+    font-family: FontAwesome;
+    display:inline-block;
+    color: #F68127;
+  }
+.rating-box:before{
+    content: "\f006 \f006 \f006 \f006 \f006";
+}
+.rating-box .rating {
+    position: absolute;
+    left:0;
+    top:0;
+    white-space:nowrap;
+    overflow:hidden;
+    color: #F68127;
+}
+.rating-box .rating:before {
+    content: "\f005 \f005 \f005 \f005 \f005";
+    }
+
+
+.hidden{
+    display:none;
+}
+
+img {
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    margin-bottom: 5%; 
+}
+
+.cat {
+    height:500px;
+    width: 500px;
+    margin-top: 2%;
+    
+}
+
+.author{
+    margin-top: -1%;
+    margin-bottom: 2%;
+}
+
+.date{
+    margin-bottom: 10px;
+    
+}
+
+.content h3{
+    margin-bottom: 20px;
+    margin-top: 20px;
+    font-size: 40px;
+    text-align: center;
+}
+
+.title{
+    font-size: 40px;
+    margin-bottom: 10px;
+}

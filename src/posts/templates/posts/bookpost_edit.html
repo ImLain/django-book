@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Editer un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <h1>Editer un livre</h1>
+    <form method="POST" enctype="multipart/form-data">
+        {% csrf_token %}
+        {% for field in form %}
+            <p>
+                {% if field.name != 'score' %} {{ field.label_tag}} {% endif %}
+                {{ field }}
+            </p>
+        {% endfor %}
+        <br>
+        <div class="stars">
+            <h3> Note : <i class="lar la-star" data-value="1"></i><i class="lar la-star" data-value="2"></i><i class="lar la-star" data-value="3"></i><i class="lar la-star" data-value="4"></i><i class="lar la-star" data-value="5"></i></h3>
+        </div>
+        <input type="submit" value="Editer" class="btn btn-submit">
+    </form>
+{% endblock content %}

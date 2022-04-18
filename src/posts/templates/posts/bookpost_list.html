@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}
+    <title>Accueil</title>
+{% endblock title %}
+
+{% block content %}
+    <h1><u>MES LIVRES</u></h1>
+
+    {% for post in posts %}
+        <article>
+            <div class="post-title">
+
+                <h2>{{ post.title }} de <b>{{ post.book_author }}</b></h2>
+
+                {% if request.user.is_authenticated %}
+                    <div>
+                        <a href="{% url 'posts:edit' slug=post.slug %}">Éditer</a>
+                        <a href="{% url 'posts:delete' slug=post.slug %}">Supprimer</a>
+                    </div>
+                {% endif %}
+
+            </div>
+
+            <!-- Pour que la date soit reprise en fr, on ajoute le load i18n et le tag language -->
+            {% language 'fr' %}
+            <h3 class='post-author'>Publié par <i>{{ post.author_or_default|capfirst }}</i> le {{ post.created_on|date:'j F Y' }}</h3>
+            <p class='post-excerpt'>{{ post.content|safe|truncatewords:50 }}</p>
+            {% endlanguage %}
+            
+            <!-- Pour afficher le score en étoile -->
+            <div class="rating-box">
+                {% if post.score == 1 %}
+                    <div class="rating" style="width:20%;"></div>
+                {% elif post.score == 2 %}
+                    <div class="rating" style="width:40%;"></div>
+                {% elif post.score == 3 %}
+                    <div class="rating" style="width:60%;"></div>
+                {% elif post.score == 4 %}
+                    <div class="rating" style="width:80%;"></div>
+                {% elif post.score == 5 %}
+                    <div class="rating" style="width:100%;"></div>
+                {% endif %}
+            </div>            
+
+            <form action="{% url 'posts:detail' slug=post.slug %}">
+                <button class="btn btn-submit">Lire la suite</button>
+            </form>            
+
+        </article>
+    {% endfor %}
+
+{% endblock content %}

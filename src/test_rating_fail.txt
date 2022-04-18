@@ -1,0 +1,382 @@
+
+https://github.com/byronlara5/django_imdb_youtube/tree/master/imdb_clone/templates
+Dans models.py
+
+Ajouter dans class BookPost, la variable : 
+imdbID = models.CharField(max_length=100, blank=True)
+
+from django.contrib.auth.models import User
+
+RATE_CHOICES = [
+	(1, '1 - Trash'),
+	(2, '2 - Horrible'),
+	(3, '3 - Terrible'),
+	(4, '4 - Bad'),
+	(5, '5 - OK'),
+	(6, '6 - Readable'),
+	(7, '7 - Good'),
+	(8, '8 - Very Good'),
+	(9, '9 - Perfect'),
+	(10, '10 - Master Piece'), 
+]
+
+class Review(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    book = models.ForeignKey(BookPost, on_delete=models.CASCADE)
+    date = models.DateTimeField(auto_now=True)
+    text = models.TextField(max_length=3000, blank=True)
+    rate = models.PositiveSmallIntegerField(choices=RATE_CHOICES, blank=True)
+    likes = models.PositiveIntegerField(default=0)
+    unlikes = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return self.user.username
+
+
+Dans forms.py 
+
+from django import forms
+from posts.models import Review, RATE_CHOICES
+
+class RateForm(forms.ModelForm):
+	text = forms.CharField(widget=forms.Textarea(attrs={'class': 'materialize-textarea'}), required=False)
+	rate = forms.ChoiceField(choices=RATE_CHOICES, widget=forms.Select(), required=True)
+
+	class Meta:
+		model = Review
+		fields = ('text', 'rate')
+
+
+Dans views.py : 
+
+from posts.forms import RateForm
+from posts.models import Review
+
+
+def Rate(request, imdb_id):
+	book = BookPost.objects.get(imdbID=imdb_id)
+	user = request.user
+    context_object_name = "post"
+
+	if request.method == 'POST':
+		form = RateForm(request.POST)
+		if form.is_valid():
+			rate = form.save(commit=False)
+			rate.user = user
+			rate.book = book
+			rate.save()
+			return HttpResponseRedirect(reverse('home', args=[imdb_id]))
+	else:
+		form = RateForm()
+
+	template = loader.get_template('rate.html') 
+
+	context = {
+		'form': form, 
+		'book': book,
+	}
+
+	return HttpResponse(template.render(context, request))
+
+
+dans urls.py : 
+from posts.views import Rate
+
+..
+path('<imdb_id>/rate', Rate, name="rate-book')
+
+Créer un html : rate.html - A MODIFIER
+
+{% extends 'base.html' %}
+{% load static %}
+
+
+{% block content %}
+      <!--   Icon Section   -->
+      <div class="row">
+
+      <div class="col s12 m12">
+        <div class="card horizontal">
+          <div class="card-image">
+            <img src="{{ movie.Poster.url }}">
+          </div>
+          <div class="card-stacked">
+            <div class="card-content">
+              <span class="card-title"><b>{{ post.title }}</b></span>
+              <span>{{ post.Type }}</span>
+              <br>
+              <p>{{ post.Plot }}</p>
+              <br>
+              <div class="divider"></div>
+              <br>
+              <form method="post" action="" role="form" class="col s12">
+                {% csrf_token %}
+               <div class="input-field col s12">
+                  {{ form.rate }}
+              </div>
+              <div class="input-field col s12">
+                  {{ form.text }}
+                <label for="textarea1">Opinion</label>
+              </div>
+
+              <button type="submit" name="action" class="waves-effect waves-light btn"><i class="material-icons left">star</i>Rate</button>
+            </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      </div>
+
+{% endblock %}
+
+le css : 
+
+
+
+
+#######################################
+
+Dans models.py 
+
+from django.contrib.auth.models import User
+
+class Rating(models.Model):
+    class Rate(models.IntegerChoices):
+        ONE_STAR = 1
+        TWO_STAR = 2
+        THREE_STAR = 3
+        FOUR_STAR = 4
+        FIVE_STAR = 5
+
+    user = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
+    date = models.DateTimeField(auto_now_add=True)
+    rate = models.IntegerField(choices=Rate.choices)
+
+class Subject(models.Model):
+    class Meta:
+        ordering = ['-date']
+    
+    name = models.CharField(max_length=30)
+    text = models.TextField(blank=False)
+    date = models.DateTimeField(auto_now_add=True)
+    rating = models.ManyToManyField(Rating, null=True, blank=True)
+
+    def get_rating(self):
+        return self.rating.all().aggregate(Avg('rate')).get('rate__avg', 1)
+
+
+Dans forms.py :
+
+from django import forms
+
+class RateForm(forms.Form):
+    rate = forms.ChoiceField(choices=(
+        (1, '1'),
+        (2, '2'),
+        (3, '3'),
+        (4, '4'),
+        (5, '5'),
+    ))
+
+
+
+class SimpleForm(forms.Form):
+    foo = forms.CharField()
+
+
+Dans views.py
+
+from django.shortcuts import render
+from django.views import View
+from .forms import SimpleForm
+from django.http import HttpResponseRedirect
+from django.http import HttpResponse
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from django.views.generic import ListView, DetailView
+from .models import Rating, Subject
+from django.views.generic.edit import FormMixin
+from .forms import RateForm
+from django.urls import reverse
+
+class RatingsDetailView(FormMixin, DetailView):
+    model = Subject
+    template_name = 'rating/rating_detail.html'
+    form_class = RateForm
+
+    def get_success_url(self):
+        return reverse('main')
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        form = self.get_form()
+        if form.is_valid():
+            user = request.user
+            rating = Rating(user=user, rate=form.data['rate'])
+            rating.save()
+            self.object.rating.add(rating)
+            self.object.save()
+            return self.form_valid(form)
+        else:
+            self.form_invalid(form)
+
+class RatingsListView(ListView):
+    model = Subject
+    paginate_by = 5
+    template_name = 'rating/rating_list.html'
+    context_object_name = 'rating_objects'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['extra_context'] = 'Foo'
+        return context
+
+class RatingsEntryListView(ListView):
+    template_name = 'rating/rating_by_name.html'
+    context_object_name = 'rating_name_objects'
+
+    def get_queryset(self):
+        return Subject.objects.filter(name=self.kwargs['name'])
+
+class SimpleFormView(View):
+    form_class = SimpleForm
+    initial = {'foo': 'pel`meni'}
+    template_name = 'form_template.html'
+
+    def get(self, request, *args, **kwargs):
+        form = self.form_class(initial=self.initial)
+        return render(request, self.template_name, {'form': form})
+
+    def post(self, request, *args, **kwargs):
+        form = self.form_class(request.POST)
+        if form.is_valid():
+            return HttpResponseRedirect("")
+        
+        return render(request, self.template_name, {'form': form})
+
+
+Dans admin.py : 
+
+from django.contrib import admin
+from .models import Rating, Subject
+# Register your models here.
+
+
+admin.site.register(Rating)
+admin.site.register(Subject)
+
+Dans urls.py 
+
+from django.contrib import admin
+from django.urls import path
+# from rating.views import SimpleFormView
+from rating.views import (
+    RatingsListView,
+    RatingsEntryListView,
+    RatingsDetailView
+    )
+from registration.views import (
+    RegistrationView, 
+    LoginView
+    )
+
+from pagination_example.views import pagination_view
+from registration.user_profile.views import ProfileView
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('', RatingsListView.as_view(), name='main'),
+    path('entry/<name>/', RatingsEntryListView.as_view()),
+    path('rating/<int:pk>/', RatingsDetailView.as_view()),
+    path('register/', RegistrationView.as_view()),
+    path('login/', LoginView.as_view(), name='login'),
+    path('pagination_example/', pagination_view),
+    path('accounts/profile/', ProfileView.as_view()),
+    # path('form/', SimpleFormView.as_view()),
+]
+
+
+base.html 
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}News app{% endblock %}</title>
+</head>
+<body>
+    {% block content %}
+    {% endblock %}
+</body>
+</html>
+
+dans template /
+rating_by_name.html : 
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Specify Entry</h2>
+        <ul>
+            {{ rating_name_objects }}
+            {% for rating in rating_name_objects %}
+                <li>{{ rating.name }}</li>
+                <li>{{ rating.text }}</li>
+                <li>{{ rating.rate }}</li>
+            {% endfor %}
+        </ul>
+{% endblock %}
+
+rating_detail.html : 
+
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Entry - {{ rating.name }}</h2>
+
+    <form action="" method="post">
+        {% csrf_token %}
+
+        {{ form.as_p }}
+
+        <input type="submit" value="Отправить">
+    </form>
+{% endblock %}
+
+
+rating_list.html: 
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Ratings</h2>
+        {{ extra_context }}
+        {% for rating in rating_objects %}
+            <ul>
+                <li>{{ rating.name }}</li>
+                <li>{{ rating.text }}</li>
+                <li>{{ rating.get_rating|floatformat:1 }}</li>
+                <li>
+                    <a href="rating/{{ rating.id }}">link to - {{ rating.name }}</a>
+                </li>
+            </ul>
+        {% endfor %}
+    <div class="pagination">
+        <span class="step-links">
+            {% if page_obj.has_previous %}
+                <a href="?page=1">&laquo; first</a>
+                <a href="?page={{ page_obj.previous_page_number }}">previous</a>
+            {% endif %}
+
+            <span class="current">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}">next</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}">last &raquo;</a>
+            {% endif %}
+        </span>
+    </div>
+{% endblock %}

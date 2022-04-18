@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}
+    <title>{{ post.title }}</title>
+{% endblock title %}
+
+{% block content %}
+    <article class="post-detail">
+        <div class="title">
+            <h1><b>{{ post.title }}</b></h1>
+        </div>
+        <div class="author">
+            <h4>de {{ post.book_author }}</h4>
+        </div>
+
+        <!-- date 
+        <div class="date">
+            {% language 'fr' %}
+                Terminé le {{ post.created_on|date:'j F Y' }}
+            {% endlanguage %}
+        </div>
+        -->
+
+        <div class="rating-box">
+            {% if post.score == 1 %}
+                <div class="rating" style="width:20%;"></div>
+            {% elif post.score == 2 %}
+                <div class="rating" style="width:40%;"></div>
+            {% elif post.score == 3 %}
+                <div class="rating" style="width:60%;"></div>
+            {% elif post.score == 4 %}
+                <div class="rating" style="width:80%;"></div>
+            {% elif post.score == 5 %}
+                <div class="rating" style="width:100%;"></div>
+            {% endif %}
+        </div> 
+
+        <div class="cat">
+        {% if post.thumbnail %}
+            <img src="{{ post.thumbnail.url }}" alt="L'image de l'article">
+        {% endif %}
+        </div>
+
+        <div class="content">
+            <h3>Résumé</h3>
+            {{ post.content|linebreaks|safe }}
+        </div>
+    </article>
+{% endblock content %}

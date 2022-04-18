@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>Supprimer un livre</title>
+{% endblock title %}
+
+{% block content %}
+    <form method="POST">
+        {% csrf_token %}
+        <p>Êtes-vous sûr de vouloir supprimer le livre "{{ post.title }}" de {{ post.book_author }} ?</p>
+        <input type="submit" value="Oui, supprimer" class="btn btn-delete">
+    </form>
+{% endblock content %}
